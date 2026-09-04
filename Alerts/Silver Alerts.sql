@@ -1,0 +1,150 @@
+-- Databricks notebook source
+-- MAGIC %python
+-- MAGIC import requests
+-- MAGIC
+-- MAGIC webhook_url = "your webhook url"
+-- MAGIC
+-- MAGIC def send_slack_alert(message):
+-- MAGIC     response = requests.post(
+-- MAGIC         webhook_url,
+-- MAGIC         json={"text": message},
+-- MAGIC         headers={"Content-Type": "application/json"}
+-- MAGIC     )
+-- MAGIC
+-- MAGIC     print("Status Code:", response.status_code)
+-- MAGIC     print("Response:", response.text)
+
+-- COMMAND ----------
+
+-- MAGIC %python
+-- MAGIC send_slack_alert(
+-- MAGIC     "⚠️ CREDIT ANALYSIS — SILVER ALERT TEST\n\n"
+-- MAGIC     "Silver Alerts notebook is successfully connected to Slack."
+-- MAGIC )
+
+-- COMMAND ----------
+
+-- MAGIC %python
+-- MAGIC tables = [
+-- MAGIC     "silver_applicant_profiles",
+-- MAGIC     "silver_credit_applications",
+-- MAGIC     "silver_credit_history",
+-- MAGIC     "silver_economic_indicators",
+-- MAGIC     "silver_loan_details"
+-- MAGIC ]
+-- MAGIC
+-- MAGIC table_counts = {}
+-- MAGIC
+-- MAGIC for table in tables:
+-- MAGIC
+-- MAGIC     count = spark.sql(f"""
+-- MAGIC         SELECT COUNT(*) AS cnt
+-- MAGIC         FROM credit_analysis_catalog.silver.{table}
+-- MAGIC     """).collect()[0]["cnt"]
+-- MAGIC
+-- MAGIC     table_counts[table] = count
+-- MAGIC
+-- MAGIC     print(f"{table}: {count} records")
+
+-- COMMAND ----------
+
+-- MAGIC %python
+-- MAGIC # Check applicant_profiles
+-- MAGIC
+-- MAGIC count = spark.sql("""
+-- MAGIC     SELECT COUNT(*) AS cnt
+-- MAGIC     FROM credit_analysis_catalog.silver.silver_applicant_profiles
+-- MAGIC """).collect()[0]["cnt"]
+-- MAGIC
+-- MAGIC print("Applicant Profiles Count:", count)
+
+-- COMMAND ----------
+
+-- MAGIC %python
+-- MAGIC if count >= 0:
+-- MAGIC
+-- MAGIC     message = f"""
+-- MAGIC 🚨 CREDIT ANALYSIS — BRONZE ALERT TEST
+-- MAGIC
+-- MAGIC Table: applicant_profiles
+-- MAGIC Records: {count}
+-- MAGIC
+-- MAGIC ⚠️ Test condition triggered successfully.
+-- MAGIC """
+-- MAGIC
+-- MAGIC     send_slack_alert(message)
+-- MAGIC
+-- MAGIC else:
+-- MAGIC     print("No alert")
+
+-- COMMAND ----------
+
+-- MAGIC %python
+-- MAGIC from pyspark.sql.functions import col, sum as spark_sum
+-- MAGIC
+-- MAGIC tables = [
+-- MAGIC     "silver_applicant_profiles",
+-- MAGIC     "silver_credit_applications",
+-- MAGIC     "silver_credit_history",
+-- MAGIC     "silver_economic_indicators",
+-- MAGIC     "silver_loan_details"
+-- MAGIC ]
+-- MAGIC
+-- MAGIC null_issues = []
+-- MAGIC
+-- MAGIC for table in tables:
+-- MAGIC
+-- MAGIC     df = spark.table(
+-- MAGIC         f"credit_analysis_catalog.silver.{table}"
+-- MAGIC     )
+-- MAGIC
+-- MAGIC     # Count NULLs in every column
+-- MAGIC     null_counts = df.select([
+-- MAGIC         spark_sum(col(c).isNull().cast("int")).alias(c)
+-- MAGIC         for c in df.columns
+-- MAGIC     ]).collect()[0]
+-- MAGIC
+-- MAGIC     for column in df.columns:
+-- MAGIC
+-- MAGIC         null_count = null_counts[column]
+-- MAGIC
+-- MAGIC         if null_count and null_count > 0:
+-- MAGIC             null_issues.append({
+-- MAGIC                 "table": table,
+-- MAGIC                 "column": column,
+-- MAGIC                 "null_count": null_count
+-- MAGIC             })
+-- MAGIC
+-- MAGIC         print(
+-- MAGIC             f"{table} | {column} | NULLs: {null_count or 0}"
+-- MAGIC         )
+
+-- COMMAND ----------
+
+-- MAGIC %python
+-- MAGIC if null_issues:
+-- MAGIC
+-- MAGIC     alert_lines = []
+-- MAGIC
+-- MAGIC     for issue in null_issues:
+-- MAGIC         alert_lines.append(
+-- MAGIC             f"• {issue['table']}.{issue['column']} "
+-- MAGIC             f"→ {issue['null_count']} NULLs"
+-- MAGIC         )
+-- MAGIC
+-- MAGIC     message = f"""
+-- MAGIC ⚠️ CREDIT ANALYSIS — SILVER DATA QUALITY ALERT
+-- MAGIC
+-- MAGIC NULL values detected in Silver layer:
+-- MAGIC
+-- MAGIC {chr(10).join(alert_lines)}
+-- MAGIC
+-- MAGIC Please investigate the Silver transformation/data-quality process.
+-- MAGIC """
+-- MAGIC
+-- MAGIC     send_slack_alert(message)
+-- MAGIC
+-- MAGIC else:
+-- MAGIC
+-- MAGIC     print("✅ SILVER NULL CHECK PASSED")
+-- MAGIC     print("No NULL values detected in the Silver tables.")

@@ -1,5 +1,4 @@
 # Credit Risk Assessment Pipeline
-# 💳 Credit Risk Assessment Pipeline
 
 ## 🚀 Project Overview
 
